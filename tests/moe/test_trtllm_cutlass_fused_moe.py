@@ -56,7 +56,7 @@ def check_cuda(err):
 def save_test_results_to_excel(test_results, filename, test_name=None, show_stats=True, verbose=True):
     """
     将测试结果保存到Excel文件的通用函数
-    
+
     Parameters:
     -----------
     test_results : list
@@ -69,7 +69,7 @@ def save_test_results_to_excel(test_results, filename, test_name=None, show_stat
         是否显示统计信息，默认True
     verbose : bool, optional
         是否显示详细进度信息，默认True
-        
+
     Returns:
     --------
     dict
@@ -79,27 +79,27 @@ def save_test_results_to_excel(test_results, filename, test_name=None, show_stat
         if verbose:
             print("没有测试结果需要保存")
         return {"saved": False, "total_tests": 0, "successful_tests": 0, "failed_tests": 0}
-    
+
     # 确保文件名有正确的扩展名
     if not filename.endswith('.xlsx'):
         filename += '.xlsx'
-    
+
     # 使用文件名作为默认测试名称
     if test_name is None:
         test_name = filename.replace('.xlsx', '')
-    
+
     try:
         # 创建DataFrame
         df = pd.DataFrame(test_results)
-        
+
         # 使用ExcelWriter来实现更好的格式控制
         with pd.ExcelWriter(filename, engine='xlsxwriter') as writer:
             df.to_excel(writer, sheet_name='测试结果', index=False)
-            
+
             # 获取工作表和工作簿对象
             worksheet = writer.sheets['测试结果']
             workbook = writer.book
-            
+
             # 定义表头格式
             header_format = workbook.add_format({
                 'bold': True,
@@ -108,44 +108,44 @@ def save_test_results_to_excel(test_results, filename, test_name=None, show_stat
                 'fg_color': '#D7E4BC',
                 'border': 1
             })
-            
+
             # 定义数据格式
             cell_format = workbook.add_format({
                 'text_wrap': True,
                 'valign': 'top',
                 'border': 1
             })
-            
+
             # 应用表头格式
             for col_num, value in enumerate(df.columns.values):
                 worksheet.write(0, col_num, value, header_format)
-            
+
             # 计算每列的最佳宽度
             for i, col in enumerate(df.columns):
                 # 计算列名长度
                 column_len = len(str(col))
-                
+
                 # 计算该列数据的最大长度
                 if len(df) > 0:
                     max_len = df[col].astype(str).str.len().max()
                     column_len = max(column_len, max_len)
-                
+
                 # 设置合理的列宽范围（最小8，最大50）
                 column_len = min(max(column_len + 2, 8), 50)
                 worksheet.set_column(i, i, column_len, cell_format)
-            
+
             # 如果数据量大，启用自动筛选
             if len(df) > 1:
                 worksheet.autofilter(0, 0, len(df), len(df.columns) - 1)
-        
+
         if verbose:
             print(f"\n测试结果已保存到 {filename}")
             print(f"总共完成 {len(test_results)} 个测试用例")
-        
+
         # 统计信息
         successful_tests = df[df['latency_ms'].notna()]
         failed_tests_count = len(test_results) - len(successful_tests)
-        
+
         stats = {
             "saved": True,
             "filename": filename,
@@ -153,28 +153,28 @@ def save_test_results_to_excel(test_results, filename, test_name=None, show_stat
             "successful_tests": len(successful_tests),
             "failed_tests": failed_tests_count
         }
-        
+
         if show_stats and verbose:
             if len(successful_tests) > 0:
                 print(f"成功测试: {len(successful_tests)} 个")
                 if 'latency_ms' in successful_tests.columns:
                     stats["avg_latency"] = successful_tests['latency_ms'].mean()
-                    stats["min_latency"] = successful_tests['latency_ms'].min()  
+                    stats["min_latency"] = successful_tests['latency_ms'].min()
                     stats["max_latency"] = successful_tests['latency_ms'].max()
                     print(f"平均延迟: {stats['avg_latency']:.3f} ms")
                     print(f"延迟范围: {stats['min_latency']:.3f} - {stats['max_latency']:.3f} ms")
-            
+
             if failed_tests_count > 0:
                 print(f"失败测试: {failed_tests_count} 个")
-        
+
         return stats
-        
+
     except Exception as e:
         error_msg = f"保存Excel文件时出错: {str(e)}"
         if verbose:
             print(error_msg)
         return {
-            "saved": False, 
+            "saved": False,
             "error": error_msg,
             "total_tests": len(test_results),
             "successful_tests": 0,
@@ -185,7 +185,7 @@ def save_test_results_to_excel(test_results, filename, test_name=None, show_stat
 def collect_test_result(test_params, latency=None, error=None, extra_data=None):
     """
     收集单个测试结果的辅助函数
-    
+
     Parameters:
     -----------
     test_params : dict
@@ -196,25 +196,25 @@ def collect_test_result(test_params, latency=None, error=None, extra_data=None):
         错误信息（如果测试失败）
     extra_data : dict, optional
         额外需要记录的数据
-        
+
     Returns:
     --------
     dict
         格式化的测试结果字典
     """
     result = test_params.copy()
-    
+
     if latency is not None:
         result['latency_ms'] = latency
     else:
         result['latency_ms'] = None
-        
+
     if error is not None:
         result['error'] = error
-        
+
     if extra_data:
         result.update(extra_data)
-        
+
     return result
 
 
@@ -916,7 +916,7 @@ def test_moe_expert_parallel(
             expert_end = expert_start + experts_per_rank
             w31_weight_local = w31_weight[expert_start:expert_end, :]
             w2_weight_local = w2_weight[expert_start:expert_end, :]
-            
+
             fused_moe.cutlass_fused_moe(
                 x.contiguous(),
                 selected_experts.to(torch.int),
@@ -930,7 +930,7 @@ def test_moe_expert_parallel(
                 output=out_hidden_states_local,
             )
             outputs.append(out_hidden_states_local)
-        
+
         for ep_rank in range(ep_size):
             flash_output += outputs[ep_rank]
     docstring = f"test_moe_expert_parallel(batch_size={batch_size}, hidden_size={hidden_size}, num_experts={num_experts}, top_k={top_k}, intermediate_size={intermediate_size})"
@@ -1049,26 +1049,26 @@ def test_moe_tensor_parallel(
         outputs = []
         for tp_rank in range(tp_size):
             out_hidden_states_local = torch.zeros_like(x)
-            
+
             w3_weight, w1_weight = torch.chunk(w31_weight, 2, dim=1)
-            
+
             w3_shard_size = intermediate_size // tp_size
             w3_start = tp_rank * w3_shard_size
             w3_end = w3_start + w3_shard_size
             w3_weight_local = w3_weight[:, w3_start:w3_end, :]
-            
+
             w1_shard_size = intermediate_size // tp_size
             w1_start = tp_rank * w1_shard_size
             w1_end = w1_start + w1_shard_size
             w1_weight_local = w1_weight[:, w1_start:w1_end, :]
-            
+
             w31_weight_local = torch.cat([w3_weight_local, w1_weight_local], dim=1)
-            
+
             w2_shard_size = intermediate_size // tp_size
             w2_start = tp_rank * w2_shard_size
             w2_end = w2_start + w2_shard_size
             w2_weight_local = w2_weight[:, :, w2_start:w2_end]
-            
+
             fused_moe.cutlass_fused_moe(
                 x.contiguous(),
                 selected_experts.to(torch.int),
@@ -1082,7 +1082,7 @@ def test_moe_tensor_parallel(
                 output=out_hidden_states_local,
             )
             outputs.append(out_hidden_states_local)
-        
+
         flash_output = sum(outputs)
     docstring = f"test_moe_tensor_parallel(batch_size={batch_size}, hidden_size={hidden_size}, num_experts={num_experts}, tp_size={tp_size}, intermediate_size={intermediate_size})"
     benchmark_fn(fn, docstring)
@@ -1210,37 +1210,37 @@ def test_moe_tensor_expert_parallel(
     def fn():
         ep_size = num_experts // 2
         outputs = []
-        
+
         for ep_rank in range(ep_size):
             experts_per_rank = num_experts // ep_size
             expert_start = ep_rank * experts_per_rank
             expert_end = expert_start + experts_per_rank
-            
+
             w31_weight_ep = w31_weight[expert_start:expert_end, :]
             w2_weight_ep = w2_weight[expert_start:expert_end, :]
-            
+
             for tp_rank in range(tp_size):
                 out_hidden_states_local = torch.zeros_like(x)
-                
+
                 w3_weight, w1_weight = torch.chunk(w31_weight_ep, 2, dim=1)
-                
+
                 w3_shard_size = intermediate_size // tp_size
                 w3_start = tp_rank * w3_shard_size
                 w3_end = w3_start + w3_shard_size
                 w3_weight_local = w3_weight[:, w3_start:w3_end, :]
-                
+
                 w1_shard_size = intermediate_size // tp_size
                 w1_start = tp_rank * w1_shard_size
                 w1_end = w1_start + w1_shard_size
                 w1_weight_local = w1_weight[:, w1_start:w1_end, :]
-                
+
                 w31_weight_local = torch.cat([w3_weight_local, w1_weight_local], dim=1)
-                
+
                 w2_shard_size = intermediate_size // tp_size
                 w2_start = tp_rank * w2_shard_size
                 w2_end = w2_start + w2_shard_size
                 w2_weight_local = w2_weight_ep[:, :, w2_start:w2_end]
-                
+
                 out_hidden_states_local = fused_moe.cutlass_fused_moe(
                     x.contiguous(),
                     selected_experts.to(torch.int),
@@ -1255,7 +1255,7 @@ def test_moe_tensor_expert_parallel(
                     quant_scales=None,
                 )
                 outputs.append(out_hidden_states_local[0])
-        
+
         flash_output = sum(outputs)
     docstring = f"test_moe_tensor_expert_parallel(batch_size={batch_size}, hidden_size={hidden_size}, num_experts={num_experts}, top_k={top_k}, tp_size={tp_size}, intermediate_size={intermediate_size})"
     benchmark_fn(fn, docstring)
@@ -1478,7 +1478,7 @@ def test_moe_fp8_block_scaling(
             use_deepseek_fp8_block_scale=True,
             quant_scales=quant_scales,
         )
-    
+
     def fn():
         fused_moe.cutlass_fused_moe(
             x.contiguous(),
@@ -1833,10 +1833,10 @@ def test_moe_bf16_mxfp4(
     return latency
 
 
-def benchmark_trtllm_cutlass_fused_moe(num_experts=256, top_k=8, n_groups=8, top_k_groups=4, hidden_size=1024, intermediate_size=1024):
+def benchmark_trtllm_cutlass_fused_moe(num_experts=256, top_k=8, n_groups=8, top_k_groups=4, hidden_size=1024, intermediate_size=2048):
     # 创建数据收集列表
     moe_dtypes = ["bf16", "fp8", "nvfp4"]
-    num_tokens_list = [1024, 4*1024, 16*1024, 64*1024, 256*1024]
+    num_tokens_list = [1024, 2*1024, 4*1024, 8*1024, 16*1024, 32*1024, 64*1024]
     test_results = []
 
     for dtype in moe_dtypes:
@@ -1863,17 +1863,17 @@ def benchmark_trtllm_cutlass_fused_moe(num_experts=256, top_k=8, n_groups=8, top
                 # 使用辅助函数收集成功的测试结果
                 result_data = collect_test_result(test_params, latency=latency)
                 test_results.append(result_data)
-                
+
                 print(f"测试完成 - moe_impl: {dtype}, num_tokens: {num_tokens}, latency: {latency:.3f} ms")
-                
+
             except Exception as e:
                 error_msg = str(e)
                 print(f"测试失败 - moe_impl: {dtype}, num_tokens: {num_tokens}, error: {error_msg}")
-                
+
                 # 使用辅助函数收集失败的测试结果
                 result_data = collect_test_result(test_params, error=error_msg)
                 test_results.append(result_data)
-            
+
             finally:
                 gc.collect()
                 torch.cuda.empty_cache()
