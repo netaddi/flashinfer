@@ -2221,7 +2221,7 @@ def test_moe_quantization_classes(
             f"Incompatible: {moe_impl.name} + {gated_act_type} + {routing_config['routing_method_type']} + {num_tokens}"
         )
     elif gated_act_type == GatedActType.SwiGlu and (
-        hidden_size > 1024
+        hidden_size > 102400
     ):
         # Skip some tests for SwiGlu for testing speed
         pytest.skip(
@@ -2569,5 +2569,6 @@ def benchmark_trtllm_gen_fused_moe(num_experts=256, top_k=8, n_groups=8, top_k_g
 
 
 if __name__ == "__main__":
-    # pytest.main([__file__, "-v"])
-    benchmark_trtllm_gen_fused_moe()
+    benchmark_trtllm_gen_fused_moe(num_experts=256, top_k=8, n_groups=8, top_k_groups=4, hidden_size=7168, intermediate_size=2048) # deepseek
+    benchmark_trtllm_gen_fused_moe(num_experts=160, top_k=8, n_groups=8, top_k_groups=4, hidden_size=6144, intermediate_size=2560) # qwen 480B
+    benchmark_trtllm_gen_fused_moe(num_experts=128, top_k=8, n_groups=8, top_k_groups=4, hidden_size=4096, intermediate_size=1536) # qwen 235B

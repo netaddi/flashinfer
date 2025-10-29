@@ -1836,7 +1836,7 @@ def test_moe_bf16_mxfp4(
 def benchmark_trtllm_cutlass_fused_moe(num_experts=256, top_k=8, n_groups=8, top_k_groups=4, hidden_size=1024, intermediate_size=2048):
     # 创建数据收集列表
     moe_dtypes = ["bf16", "fp8", "nvfp4"]
-    num_tokens_list = [1024, 2*1024, 4*1024, 8*1024, 16*1024, 32*1024, 64*1024]
+    num_tokens_list = [16, 32, 64, 128, 256, 512, 1024, 2*1024, 4*1024, 8*1024, 16*1024, 32*1024, 64*1024]
     test_results = []
 
     for dtype in moe_dtypes:
@@ -1881,4 +1881,7 @@ def benchmark_trtllm_cutlass_fused_moe(num_experts=256, top_k=8, n_groups=8, top
     save_test_results_to_excel(test_results, "test_trtllm_cutlass_fused_moe", show_stats=True)
 
 if __name__ == "__main__":
-    benchmark_trtllm_cutlass_fused_moe()
+    benchmark_trtllm_cutlass_fused_moe(num_experts=256, top_k=8, n_groups=8, top_k_groups=4, hidden_size=7168, intermediate_size=2048) # deepseek
+    benchmark_trtllm_cutlass_fused_moe(num_experts=160, top_k=8, n_groups=8, top_k_groups=4, hidden_size=6144, intermediate_size=2560) # qwen 480B
+    benchmark_trtllm_cutlass_fused_moe(num_experts=128, top_k=8, n_groups=8, top_k_groups=4, hidden_size=4096, intermediate_size=1536) # qwen 235B
+
