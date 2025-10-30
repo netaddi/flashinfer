@@ -1,20 +1,23 @@
 import json
 import random
-import cutlass
-from flashinfer.cute_dsl.blockscaled_gemm import (
-    create_scale_factor_tensor,
-    grouped_gemm_nt_masked,  # deepgemm-like python interface for DLFW integration
-)
+
 import torch
-import cutlass.torch as cutlass_torch
-from flashinfer.cute_dsl.utils import get_cutlass_dtype
-from flashinfer.testing.utils import bench_kineto, count_bytes
+
+try:
+    import cutlass
+    from flashinfer.cute_dsl.blockscaled_gemm import (
+        create_scale_factor_tensor,
+        grouped_gemm_nt_masked,  # deepgemm-like python interface for DLFW integration
+    )
+    import cutlass.torch as cutlass_torch
+    from flashinfer.cute_dsl.utils import get_cutlass_dtype
+    from flashinfer.testing.utils import bench_kineto, count_bytes
+except ImportError:
+    print("Skipping test_cute_dsl_blockscaled_gemm.py since cutlass is not available")
 
 
-ab_dtype = "float4_e2m1fn"
-sf_dtype = "float8_e4m3fn"
+sf_dtype = "float8_e8m0fnu"
 c_dtype = "bfloat16"
-sf_vec_size = 16
 
 # DeepGEMM case
 a_major = "k"
@@ -22,8 +25,12 @@ b_major = "k"
 c_major = "n"
 
 
-def bench_one(num_groups, max_m, expected_m_per_group, n, k):
+def bench_one(ab_dtype, num_groups, max_m, expected_m_per_group, n, k):
+    sf_vec_size = 16 if ab_dtype == "float4_e2m1fn" else 32
+
     data = create_data(
+        ab_dtype=ab_dtype,
+        sf_vec_size=sf_vec_size,
         num_groups=num_groups,
         max_m=max_m,
         expected_m_per_group=expected_m_per_group,
@@ -48,6 +55,7 @@ def bench_one(num_groups, max_m, expected_m_per_group, n, k):
         test_func,
         "Sm100BlockScaledPersistentDenseGemmKernel",
         suppress_kineto_output=True,
+        num_tests=5,
     )
 
     valid_m = data["masked_m"].sum().item()
@@ -66,6 +74,11 @@ def bench_one(num_groups, max_m, expected_m_per_group, n, k):
     print(
         f" > Perf ({num_groups=}, expected_m_per_group={expected_m_per_group:4}, n={n:4}, k={k:4}): "
         f"{t * 1e6:4.0f} us | {tflops:4.0f} TFLOPS | {gb_per_s:4.0f} GB/s"
+    )
+
+    f = open("/tmp/fp4_test/cute_dsl_attn.csv", "a")
+    f.write(
+        f"{ab_dtype},{sf_dtype},{c_dtype},{num_groups},{expected_m_per_group},{valid_m},{n},{k},{t*1e6},{t_calibrated*1e6},{tflops},{gb_per_s}\n"
     )
 
     metrics = dict(
@@ -96,30 +109,43 @@ def enumerate_m_grouped_masked():
         (4, 256),
     ]
     # more GB200 cases
-    num_experts = 288
-    num_experts_per_token = 8
-    for num_ranks in [4, 8, 16, 32, 36, 48, 72]:
-        for num_tokens in [64, 128, 256, 384, 512, 768, 1024]:
-            num_groups = num_experts // num_ranks
-            expected_m_per_group = num_tokens * num_experts_per_token // num_groups
-            cases.append((num_groups, expected_m_per_group))
+    num_experts_list = [128, 160, 256, 288]
+    for num_experts in num_experts_list:
+        num_experts_per_token = 8
+        ranks_options = []
+        if num_experts % 3 == 0:
+            ranks_options = [16, 32, 36, 72]
+        else:
+            ranks_options = [16, 32, 64]
+        for num_ranks in ranks_options:
+            for num_tokens in [64, 128, 256, 512, 1024]:
+                num_groups = num_experts // num_ranks
+                expected_m_per_group = num_tokens * num_experts_per_token // num_groups
+                cases.append((num_groups, expected_m_per_group))
 
     for num_groups, expected_m_per_group in cases:
         for n, k in (
             (4096, 7168),
             (7168, 2048),
+            (5120, 6144),
+            (6144, 2560),
+            (8192, 1536),
+            (1536, 4096),
         ):
-            yield dict(
-                num_groups=num_groups,
-                max_m=max_m,
-                expected_m_per_group=expected_m_per_group,
-                n=n,
-                k=k,
-            )
+            ab_dtypes = ["float4_e2m1fn", "float8_e4m3fn"]
+            for ab_dtype in ab_dtypes:
+                yield dict(
+                    ab_dtype=ab_dtype,
+                    num_groups=num_groups,
+                    max_m=max_m,
+                    expected_m_per_group=expected_m_per_group,
+                    n=n,
+                    k=k,
+                )
 
 
 # Copy and modified from test_cute_dsl_blockscaled_gemm.py, may extract common logic later if needed
-def create_data(num_groups, max_m, expected_m_per_group, n, k, device="cuda:0"):
+def create_data(ab_dtype, sf_vec_size, num_groups, max_m, expected_m_per_group, n, k, device="cuda:0"):
     device = torch.device(device)
     l = num_groups
     m = max_m
@@ -190,13 +216,18 @@ def create_masked_m(num_groups, expected_m_per_group, max_m):
     """Align with DeepGEMM :: generate_m_grouped_masked"""
     masked_m = torch.empty((num_groups,), device="cuda", dtype=torch.int)
     for j in range(num_groups):
-        masked_m[j] = int(expected_m_per_group * random.uniform(0.7, 1.3))
+        random.seed(j + 12345 + num_groups + expected_m_per_group + max_m)
+        masked_m[j] = int(expected_m_per_group * random.uniform(0.9, 1.1))
+        if masked_m[j] > max_m:
+            masked_m[j] = max_m
     assert masked_m.amax().item() <= max_m
     return masked_m
 
 
 if __name__ == "__main__":
-    torch.manual_seed(42)
-    random.seed(42)
     for config in enumerate_m_grouped_masked():
-        bench_one(**config)
+        print(config)
+        try:
+            bench_one(**config)
+        except BaseException as e:
+            print(f"Error for config {config}: {e}")

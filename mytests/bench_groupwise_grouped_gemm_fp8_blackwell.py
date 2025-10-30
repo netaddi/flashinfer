@@ -44,8 +44,8 @@ def bench_groupwise_grouped_gemm_fp8_blackwell(
         lambda: flashinfer.gemm.group_gemm_fp8_nt_groupwise(
             a, b, a_scale, b_scale, segment_offsets, out=out, mma_sm=2
         ),
-        dry_run_time_ms=100,
-        repeat_time_ms=1000,
+        dry_run_time_ms=2,
+        repeat_time_ms=32,
     )
     ms = np.median(measurements)
     tflops_per_second = 2 * batch_size * m * n * k * 1e-9 / ms
@@ -53,12 +53,17 @@ def bench_groupwise_grouped_gemm_fp8_blackwell(
         f"group_gemm_fp8_nt_groupwise batch_size={batch_size} m={m} n={n} k={k} in_dtype={in_dtype} out_dtype={out_dtype}: {tflops_per_second:.2f} TFLOPs/s"
     )
 
+    f = open("/tmp/fp4_test/grouped_gemm.csv", "a")
+    f.write(
+        f"{in_dtype},{out_dtype},group_gemm_fp8_nt_groupwise,{batch_size},{m},{n},{k},{ms},{tflops_per_second}\n"
+    )
 
-if __name__ == "__main__":
-    for batch_size in [1, 3, 8, 16]:
-        for m in [128, 512, 1024, 2048, 4096, 8192]:
-            for n in [1024, 2048, 4096, 8192]:
-                for k in [1024, 2048, 4096, 8192]:
-                    bench_groupwise_grouped_gemm_fp8_blackwell(
-                        batch_size, m, n, k, torch.float8_e5m2, torch.bfloat16
-                    )
+
+# if __name__ == "__main__":
+#     for batch_size in [1, 3, 8, 16]:
+#         for m in [128, 512, 1024, 2048, 4096, 8192]:
+#             for n in [1024, 2048, 4096, 8192]:
+#                 for k in [1024, 2048, 4096, 8192]:
+#                     bench_groupwise_grouped_gemm_fp8_blackwell(
+#                         batch_size, m, n, k, torch.float8_e5m2, torch.bfloat16
+#                     )

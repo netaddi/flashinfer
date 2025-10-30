@@ -94,8 +94,8 @@ def bench_groupwise_grouped_gemm_mxfp4_blackwell(
                 tile_k=tile_k,
                 swap_ab=swap_ab,
             ),
-            dry_run_time_ms=10,
-            repeat_time_ms=100,
+            dry_run_time_ms=2,
+            repeat_time_ms=16,
         )
         ms = np.median(measurements)
         if ms < ms_best:
@@ -114,8 +114,16 @@ def bench_groupwise_grouped_gemm_mxfp4_blackwell(
     print(f"best config: {config_best}")
     print()
 
+    f = open("/tmp/fp4_test/grouped_gemm.csv", "a")
+    f.write(
+        f"{in_dtype},{out_dtype},group_gemm_mxfp4_nt_groupwise,{group_size},{m},{n},{k},{ms_best},{tflops_per_second}\n"
+    )
 
 if __name__ == "__main__":
+    from bench_groupwise_grouped_gemm_fp8_blackwell import (
+        bench_groupwise_grouped_gemm_fp8_blackwell,
+    )
+
     for group_size in [1, 3, 8, 16]:
         for m in [128, 512, 1024, 2048, 4096, 8192]:
             for n in [1024, 2048, 4096, 8192]:
@@ -123,3 +131,9 @@ if __name__ == "__main__":
                     bench_groupwise_grouped_gemm_mxfp4_blackwell(
                         group_size, m, n, k, torch.float8_e4m3fn, torch.bfloat16
                     )
+                    bench_groupwise_grouped_gemm_fp8_blackwell(
+                        group_size, m, n, k, torch.float8_e4m3fn, torch.bfloat16
+                    )
+                    # bench_groupwise_grouped_gemm_fp8_blackwell(
+                    #     group_size, m, n, k, torch.float8_e5m2, torch.bfloat16
+                    # )
