@@ -21,6 +21,7 @@ except ImportError:
 def bench_one(
     batch_size,
     num_heads,
+    num_kv_heads,
     head_dim,
     q_len,
     kv_len,
@@ -32,7 +33,8 @@ def bench_one(
 
     Args:
         batch_size: Number of sequences in the batch
-        num_heads: Number of attention heads (both Q and KV)
+        num_heads: Number of query attention heads
+        num_kv_heads: Number of key-value attention heads (for GQA)
         head_dim: Dimension of each attention head
         q_len: Query sequence length (new tokens to prefill)
         kv_len: Total KV cache length (including existing cache)
@@ -41,11 +43,13 @@ def bench_one(
 
     Note: Supports partial prefill where kv_len > q_len
           (e.g., kv_len=1024 existing cache, q_len=5 new tokens)
+          Supports GQA where num_kv_heads < num_heads
     """
 
     data = create_data(
         batch_size=batch_size,
         num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
         head_dim=head_dim,
         q_len=q_len,
         kv_len=kv_len,
@@ -111,8 +115,10 @@ def bench_one(
     total_bytes = query_bytes + kv_bytes + output_bytes
     gb_per_s = total_bytes / 1e9 / t
 
+    group_size = num_heads // num_kv_heads
     print(
-        f" > Perf (bs={batch_size:2}, nh={num_heads:3}, hd={head_dim:3}, q={q_len:4}, kv={kv_len:4}): "
+        f" > Perf (bs={batch_size:2}, nh={num_heads:3}, nkv={num_kv_heads:2}, gs={group_size:2}, "
+        f"hd={head_dim:3}, q={q_len:4}, kv={kv_len:4}): "
         f"{t * 1e6:7.0f} us | {tflops:6.2f} TFLOPS | {gb_per_s:6.0f} GB/s"
     )
 
@@ -121,7 +127,7 @@ def bench_one(
     os.makedirs(output_dir, exist_ok=True)
     f = open(f"{output_dir}/flashinfer_prefill.csv", "a")
     f.write(
-        f"{dtype},{batch_size},{num_heads},{head_dim},{q_len},{kv_len},"
+        f"{dtype},{batch_size},{num_heads},{num_kv_heads},{group_size},{head_dim},{q_len},{kv_len},"
         f"{total_q_tokens},{t*1e6},{tflops},{gb_per_s}\n"
     )
     f.close()
@@ -129,6 +135,8 @@ def bench_one(
     metrics = dict(
         batch_size=batch_size,
         num_heads=num_heads,
+        num_kv_heads=num_kv_heads,
+        group_size=group_size,
         head_dim=head_dim,
         q_len=q_len,
         kv_len=kv_len,
@@ -143,6 +151,7 @@ def bench_one(
 def create_data(
     batch_size,
     num_heads,
+    num_kv_heads,
     head_dim,
     q_len,
     kv_len,
@@ -151,15 +160,22 @@ def create_data(
     device="cuda:0",
 ):
     """
-    Create test data for FlashInfer prefill kernel with partial prefill support
+    Create test data for FlashInfer prefill kernel with partial prefill and GQA support
 
     Args:
+        batch_size: Number of sequences in the batch
+        num_heads: Number of query attention heads
+        num_kv_heads: Number of key-value attention heads (for GQA)
+        head_dim: Dimension of each attention head
         q_len: Number of new query tokens to prefill
         kv_len: Total KV cache length (can be > q_len for partial prefill)
+        block_size: KV cache block size (page size)
+        dtype: Data type for computation
+        device: Device to create tensors on
 
     Returns a dictionary with:
         - query: [total_q_tokens, num_heads, head_dim]
-        - k_cache, v_cache: KV cache blocks
+        - k_cache, v_cache: [num_pages, num_kv_heads, page_size, head_dim] KV cache blocks
         - workspace_buffer: workspace memory
         - block_tables: [batch_size, max_blocks]
         - seq_lens: [batch_size] - KV sequence lengths
@@ -192,13 +208,10 @@ def create_data(
     num_blocks_per_seq = (kv_len + block_size - 1) // block_size
     total_blocks = batch_size * num_blocks_per_seq
 
-    # For MHA (Multi-Head Attention), num_kv_heads should equal num_heads
-    # For GQA (Grouped Query Attention), num_kv_heads < num_heads
-    # We use MHA here for simplicity
-    num_kv_heads = num_heads
-
     # KV cache shape: [num_pages, num_kv_heads, page_size, head_dim]
     # Note: torch.randn doesn't support FP8, so we create with bfloat16 then convert
+    # For MHA: num_kv_heads == num_heads
+    # For GQA: num_kv_heads < num_heads (e.g., group_size=12 means num_kv_heads = num_heads/12)
     k_cache = torch.randn(total_blocks, num_kv_heads, block_size, head_dim, dtype=torch.bfloat16, device=device).to(dtype)
     v_cache = torch.randn(total_blocks, num_kv_heads, block_size, head_dim, dtype=torch.bfloat16, device=device).to(dtype)
 
@@ -237,6 +250,7 @@ def create_data(
 def enumerate_test_configs():
     """
     Generate test configurations for fixed model architecture (96 heads × 128 head_dim)
+    with GQA (group_size=12, num_kv_heads=8)
     Tests various batch sizes and sequence lengths, including partial prefill scenarios
 
     Partial prefill: When kv_len > q_len, simulating continuous batching where
@@ -244,8 +258,10 @@ def enumerate_test_configs():
 
     Example: kv_len=1024 (existing cache), q_len=5 (new tokens to add)
     """
-    # Fixed model architecture
+    # Fixed model architecture with GQA
     num_heads = 96
+    group_size = 12
+    num_kv_heads = num_heads // group_size  # 96 / 12 = 8
     head_dim = 128
 
     # Batch sizes to test
@@ -286,6 +302,7 @@ def enumerate_test_configs():
             yield dict(
                 batch_size=batch_size,
                 num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
                 head_dim=head_dim,
                 q_len=q_len,
                 kv_len=kv_len,
@@ -308,6 +325,7 @@ def enumerate_test_configs():
             yield dict(
                 batch_size=batch_size,
                 num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
                 head_dim=head_dim,
                 q_len=q_len,
                 kv_len=kv_len,
@@ -318,11 +336,13 @@ def enumerate_test_configs():
 def enumerate_simple_configs():
     """
     Generate a smaller set of test configurations for quick testing
-    Fixed architecture: 96 heads × 128 head_dim
+    Fixed architecture: 96 heads × 128 head_dim with GQA (group_size=12, num_kv_heads=8)
 
     Includes both full and partial prefill scenarios
     """
     num_heads = 96
+    group_size = 12
+    num_kv_heads = num_heads // group_size  # 96 / 12 = 8
     head_dim = 128
 
     configs = []
@@ -337,6 +357,7 @@ def enumerate_simple_configs():
             configs.append(dict(
                 batch_size=batch_size,
                 num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
                 head_dim=head_dim,
                 q_len=q_len,
                 kv_len=kv_len,
@@ -354,6 +375,7 @@ def enumerate_simple_configs():
                 configs.append(dict(
                     batch_size=batch_size,
                     num_heads=num_heads,
+                    num_kv_heads=num_kv_heads,
                     head_dim=head_dim,
                     q_len=q_len,
                     kv_len=kv_len,
@@ -371,11 +393,11 @@ if __name__ == "__main__":
     csv_path = f"{output_dir}/flashinfer_prefill.csv"
     if not os.path.exists(csv_path):
         with open(csv_path, "w") as f:
-            f.write("dtype,batch_size,num_heads,head_dim,q_len,kv_len,total_q_tokens,t_us,tflops,gb_per_s\n")
+            f.write("dtype,batch_size,num_heads,num_kv_heads,group_size,head_dim,q_len,kv_len,total_q_tokens,t_us,tflops,gb_per_s\n")
 
     print("=" * 80)
     print("FlashInfer Prefill Kernel Benchmark")
-    print("Fixed architecture: 96 heads × 128 head_dim")
+    print("Fixed architecture: 96 heads × 128 head_dim with GQA (group_size=12, num_kv_heads=8)")
     print("=" * 80)
 
     # Use simple configs for quick testing, or enumerate_test_configs() for comprehensive testing
