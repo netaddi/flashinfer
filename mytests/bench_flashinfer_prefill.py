@@ -325,24 +325,42 @@ def enumerate_simple_configs():
     num_heads = 96
     head_dim = 128
 
-    configs = [
-        # Full prefill scenarios
-        dict(batch_size=1, num_heads=num_heads, head_dim=head_dim, q_len=128, kv_len=128),
-        dict(batch_size=8, num_heads=num_heads, head_dim=head_dim, q_len=256, kv_len=256),
-        dict(batch_size=16, num_heads=num_heads, head_dim=head_dim, q_len=512, kv_len=512),
-        dict(batch_size=4, num_heads=num_heads, head_dim=head_dim, q_len=1024, kv_len=1024),
-        dict(batch_size=2, num_heads=num_heads, head_dim=head_dim, q_len=2048, kv_len=2048),
+    configs = []
 
-        # Partial prefill scenarios (existing cache + new tokens)
-        dict(batch_size=8, num_heads=num_heads, head_dim=head_dim, q_len=5, kv_len=128),
-        dict(batch_size=8, num_heads=num_heads, head_dim=head_dim, q_len=5, kv_len=512),
-        dict(batch_size=4, num_heads=num_heads, head_dim=head_dim, q_len=5, kv_len=1024),
-        dict(batch_size=2, num_heads=num_heads, head_dim=head_dim, q_len=32, kv_len=1024),
-        dict(batch_size=1, num_heads=num_heads, head_dim=head_dim, q_len=5, kv_len=2048),
-    ]
+    # test for prefill
+    test_batch_sizes = [1, 2, 4, 8, 12, 16]
+    test_prefill_lens = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+
+    for batch_size in test_batch_sizes:
+        for q_len in test_prefill_lens:
+            kv_len = q_len
+            configs.append(dict(
+                batch_size=batch_size,
+                num_heads=num_heads,
+                head_dim=head_dim,
+                q_len=q_len,
+                kv_len=kv_len,
+                dtype=torch.float8_e4m3fn,
+            )
+
+    # test for sp decode
+    test_batch_sizes = list(range(32, 1100, 32))
+    test_kv_lens = [2048, 4096, 8192, 16384, 32768, 65536]
+    test_q_lens = [1, 2, 3, 4, 5]
+
+    for batch_size in test_batch_sizes:
+        for kv_len in test_kv_lens:
+            for q_len in test_q_lens:
+                configs.append(dict(
+                    batch_size=batch_size,
+                    num_heads=num_heads,
+                    head_dim=head_dim,
+                    q_len=q_len,
+                    kv_len=kv_len,
+                    dtype=torch.float8_e4m3fn,
+                ))
 
     for config in configs:
-        config['dtype'] = torch.float8_e4m3fn
         yield config
 
 
