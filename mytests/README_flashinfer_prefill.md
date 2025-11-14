@@ -15,8 +15,11 @@ This benchmark tests the TRT-LLM batch context attention kernel with various con
 
 **Model Architectures:**
 - Llama-2/3 style: 32 heads × 128 head_dim
-- Qwen style: 40 heads × 128 head_dim
 - Large models: 64 heads × 128 head_dim
+- Small models: 16 heads × 128 head_dim
+- Very small models: 8 heads × 128 head_dim
+
+**Note:** Only power-of-2 head counts are tested to ensure compatibility with the TRT-LLM kernel, which requires `num_qo_heads` to be a multiple of `num_kv_heads`.
 
 **Batch Sizes:** 1, 2, 4, 8, 16, 32, 64
 
@@ -163,6 +166,15 @@ python -c "import flashinfer; print(flashinfer.__version__)"
 - Ensure GPU has sufficient memory
 - For large configs, reduce batch_size or seq_len
 - Check CUDA compatibility with your GPU
+
+### Head Count Compatibility Error
+
+If you see an error like:
+```
+num_qo_heads must be a multiple of num_kv_heads, got num_kv_heads: 64 and num_qo_heads: 40
+```
+
+This means the TRT-LLM kernel detected a mismatch in head counts. The kernel is designed for Group Query Attention (GQA) where Q heads must be a multiple of KV heads. For standard Multi-Head Attention (MHA), use power-of-2 head counts (8, 16, 32, 64, etc.).
 
 ### Performance Issues
 

@@ -211,13 +211,17 @@ def create_data(
 def enumerate_test_configs():
     """
     Generate test configurations similar to real-world inference scenarios
+
+    Note: Only use power-of-2 head counts to avoid GQA compatibility issues.
+    The TRT-LLM kernel requires num_qo_heads to be a multiple of num_kv_heads.
     """
-    # Common model configurations
+    # Common model configurations (power of 2 for compatibility)
     model_configs = [
         # (num_heads, head_dim)
-        (32, 128),   # Llama-2/3 style
-        (40, 128),   # Qwen style
+        (32, 128),   # Llama-2/3 style, GPT-3
         (64, 128),   # Larger models
+        (16, 128),   # Smaller models
+        (8, 128),    # Very small models
     ]
 
     # Batch sizes
@@ -245,6 +249,8 @@ def enumerate_test_configs():
 def enumerate_simple_configs():
     """
     Generate a smaller set of test configurations for quick testing
+
+    Note: Only use power-of-2 head counts for compatibility with TRT-LLM kernel
     """
     configs = [
         # Small: typical decode batch
@@ -252,9 +258,9 @@ def enumerate_simple_configs():
         dict(batch_size=8, num_heads=32, head_dim=128, seq_len=256, max_kv_len=256),
         dict(batch_size=16, num_heads=32, head_dim=128, seq_len=512, max_kv_len=512),
 
-        # Medium: typical prefill
-        dict(batch_size=4, num_heads=40, head_dim=128, seq_len=1024, max_kv_len=1024),
-        dict(batch_size=8, num_heads=40, head_dim=128, seq_len=2048, max_kv_len=2048),
+        # Medium: typical prefill (changed from 40 to 32 heads for compatibility)
+        dict(batch_size=4, num_heads=32, head_dim=128, seq_len=1024, max_kv_len=1024),
+        dict(batch_size=8, num_heads=32, head_dim=128, seq_len=2048, max_kv_len=2048),
 
         # Large: long context
         dict(batch_size=2, num_heads=64, head_dim=128, seq_len=4096, max_kv_len=4096),
