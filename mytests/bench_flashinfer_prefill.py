@@ -154,8 +154,9 @@ def create_data(
     device = torch.device(device)
 
     # Create query tensor: [total_tokens, num_heads, head_dim]
+    # Note: torch.randn doesn't support FP8, so we create with bfloat16 then convert
     total_tokens = batch_size * seq_len
-    query = torch.randn(total_tokens, num_heads, head_dim, dtype=dtype, device=device)
+    query = torch.randn(total_tokens, num_heads, head_dim, dtype=torch.bfloat16, device=device).to(dtype)
 
     # Create sequence lengths (all same for simplicity)
     seq_lens = torch.full((batch_size,), seq_len, dtype=torch.int32, device=device)
@@ -171,8 +172,9 @@ def create_data(
     total_blocks = batch_size * num_blocks_per_seq
 
     # KV cache shape: [total_blocks, block_size, num_heads, head_dim]
-    k_cache = torch.randn(total_blocks, block_size, num_heads, head_dim, dtype=dtype, device=device)
-    v_cache = torch.randn(total_blocks, block_size, num_heads, head_dim, dtype=dtype, device=device)
+    # Note: torch.randn doesn't support FP8, so we create with bfloat16 then convert
+    k_cache = torch.randn(total_blocks, block_size, num_heads, head_dim, dtype=torch.bfloat16, device=device).to(dtype)
+    v_cache = torch.randn(total_blocks, block_size, num_heads, head_dim, dtype=torch.bfloat16, device=device).to(dtype)
 
     # Create block tables: [batch_size, max_blocks_per_seq]
     block_tables = torch.arange(total_blocks, dtype=torch.int32, device=device).reshape(
