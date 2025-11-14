@@ -95,22 +95,39 @@ def bench_one(
 
     # Calculate metrics
     total_q_tokens = batch_size * q_len  # Total query tokens
+    total_kv_tokens = batch_size * kv_len  # Total KV tokens
 
-    # FLOPS calculation for attention:
-    # BMM1: Q @ K^T = [total_q_tokens, num_heads, head_dim] @ [num_heads, head_dim, kv_len]
-    #       -> [total_q_tokens, num_heads, kv_len]
-    # BMM2: S @ V = [total_q_tokens, num_heads, kv_len] @ [num_heads, kv_len, head_dim]
-    #       -> [total_q_tokens, num_heads, head_dim]
+    # FLOPS calculation for GQA attention:
+    # In GQA, query has num_heads, but K/V have num_kv_heads (each KV head is shared by group_size query heads)
+    # BMM1: Q @ K^T for each query head with its corresponding KV head
+    #       Q: [total_q_tokens, num_heads, head_dim]
+    #       K: [total_kv_tokens, num_kv_heads, head_dim] (broadcasted to match query heads)
+    #       Output: [total_q_tokens, num_heads, kv_len]
+    #       FLOPS: 2 * total_q_tokens * num_heads * kv_len * head_dim
+    # BMM2: attention_weights @ V
+    #       S: [total_q_tokens, num_heads, kv_len]
+    #       V: [total_kv_tokens, num_kv_heads, head_dim] (broadcasted to match query heads)
+    #       Output: [total_q_tokens, num_heads, head_dim]
+    #       FLOPS: 2 * total_q_tokens * num_heads * kv_len * head_dim
     flops_bmm1 = 2 * total_q_tokens * num_heads * kv_len * head_dim
     flops_bmm2 = 2 * total_q_tokens * num_heads * kv_len * head_dim
     total_flops = flops_bmm1 + flops_bmm2
     tflops = total_flops / t / 1e12
 
-    # Memory bandwidth calculation
-    # Input: Q (q_len tokens), K cache (kv_len tokens), V cache (kv_len tokens)
-    # Output: O (q_len tokens)
-    query_bytes = data["query"].numel() * data["query"].element_size()
-    kv_bytes = (data["k_cache"].numel() + data["v_cache"].numel()) * data["k_cache"].element_size()
+    # Memory bandwidth calculation for GQA:
+    # Input tensors read from memory:
+    #   - Query: [total_q_tokens, num_heads, head_dim] (96 heads)
+    #   - K cache: [num_blocks, num_kv_heads, block_size, head_dim] (8 heads for GQA)
+    #   - V cache: [num_blocks, num_kv_heads, block_size, head_dim] (8 heads for GQA)
+    # Output tensor written to memory:
+    #   - Output: [total_q_tokens, num_heads, head_dim] (96 heads)
+    # Note: In GQA, KV cache is smaller (num_kv_heads < num_heads), saving memory bandwidth
+    #       For example: with 96 query heads and 8 KV heads, KV cache is 12x smaller
+    query_bytes = total_q_tokens * num_heads * head_dim * torch.finfo(dtype).bits // 8
+    # KV cache bytes: use actual cache size (already reflects num_kv_heads)
+    k_cache_bytes = data["k_cache"].numel() * data["k_cache"].element_size()
+    v_cache_bytes = data["v_cache"].numel() * data["v_cache"].element_size()
+    kv_bytes = k_cache_bytes + v_cache_bytes
     output_bytes = total_q_tokens * num_heads * head_dim * torch.finfo(dtype).bits // 8
     total_bytes = query_bytes + kv_bytes + output_bytes
     gb_per_s = total_bytes / 1e9 / t
