@@ -382,7 +382,7 @@ def enumerate_simple_configs():
             ))
 
     # test for sp decode
-    test_batch_sizes = list(range(32, 1100, 32))
+    test_batch_sizes = list(range(16, 530, 16))
     test_kv_lens = [2048, 4096, 8192, 16384, 32768, 65536]
     test_q_lens = [1, 2, 3, 4, 5]
 
@@ -408,9 +408,9 @@ if __name__ == "__main__":
     output_dir = "/tmp/fp4_test"
     os.makedirs(output_dir, exist_ok=True)
     csv_path = f"{output_dir}/flashinfer_prefill.csv"
-    if not os.path.exists(csv_path):
-        with open(csv_path, "w") as f:
-            f.write("dtype,batch_size,num_heads,num_kv_heads,group_size,head_dim,q_len,kv_len,total_q_tokens,t_us,tflops,gb_per_s\n")
+    with open(csv_path, "w") as f:
+        f.write("dtype,batch_size,num_heads,num_kv_heads,group_size,head_dim,q_len,kv_len,total_q_tokens,t_us,tflops,gb_per_s\n")
+
 
     print("=" * 80)
     print("FlashInfer Prefill Kernel Benchmark")
