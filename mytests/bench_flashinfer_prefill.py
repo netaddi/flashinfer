@@ -86,7 +86,7 @@ def bench_one(
         test_func,
         "fmha",
         suppress_kineto_output=True,
-        num_tests=5,
+        num_tests=4,
     )
 
     # Calculate metrics
@@ -341,7 +341,7 @@ def enumerate_simple_configs():
                 q_len=q_len,
                 kv_len=kv_len,
                 dtype=torch.float8_e4m3fn,
-            )
+            ))
 
     # test for sp decode
     test_batch_sizes = list(range(32, 1100, 32))
