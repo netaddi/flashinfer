@@ -86,7 +86,7 @@ def bench_one(
         test_func,
         "fmha",
         suppress_kineto_output=True,
-        num_tests=4,
+        num_tests=8,
     )
 
     # Calculate metrics
