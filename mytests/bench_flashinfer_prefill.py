@@ -84,7 +84,7 @@ def bench_one(
     # Benchmark using kineto
     t = bench_kineto(
         test_func,
-        "trtllm_batch_context_with_kv_cache",
+        "fmha",
         suppress_kineto_output=True,
         num_tests=5,
     )
