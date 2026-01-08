@@ -299,3 +299,4 @@ if __name__ == "__main__":
     test_fp8_groupwise_group_gemm(4, 128, 256, 2, "MN", torch.bfloat16)
     test_fp8_groupwise_group_deepgemm(256, (128, 512), 4, torch.bfloat16)
     test_fp8_groupwise_batch_deepgemm_masked(256, (128, 512), 8, torch.bfloat16)
+    print("All tests passed")

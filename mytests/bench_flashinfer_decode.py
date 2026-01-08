@@ -89,7 +89,7 @@ def bench_one(
         test_func,
         "fmha",
         suppress_kineto_output=True,
-        num_tests=8,
+        num_tests=32,
     )
 
     # Calculate metrics
@@ -303,29 +303,37 @@ def enumerate_simple_configs():
 
     Focus on speculative decoding scenarios (q_len_per_req > 1)
     """
-    num_heads = 96
+    # num_heads = 96
     group_size = 12
-    num_kv_heads = num_heads // group_size  # 96 / 12 = 8
     head_dim = 128
 
     configs = []
 
-    test_batch_sizes_spec = list(range(16, 530, 16))  # 16, 32, 48, ..., 512
-    test_kv_lens_spec = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
-    test_q_lens_spec = [1, 2, 3, 4, 5, 6, 7, 8]
+    # test_batch_sizes_spec = list(range(16, 530, 16))  # 16, 32, 48, ..., 512
+    # test_kv_lens_spec = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+    # test_q_lens_spec = [1, 2, 3, 5, 7, 9]
+
+    # prototyping qwen coder extreme low latency scenario
+    # test_batch_sizes_spec = [1,2,3,4,5,6,7,8,9,10,12,14,15,16,18,20,21,24,28,30,32,36,40,42,48,50,56,60,70,80,84,98,112]
+    test_batch_sizes_spec = [1,2,3,4,5,6,7,8,9,10,12,14,15,16]
+    test_kv_lens_spec = [65536, 131072, 160363]
+    test_q_lens_spec = [1]
+    num_heads_spec = [96, 48, 24, 12]
 
     for batch_size in test_batch_sizes_spec:
         for kv_len in test_kv_lens_spec:
             for q_len_per_req in test_q_lens_spec:
-                configs.append(dict(
-                    batch_size=batch_size,
-                    num_heads=num_heads,
-                    num_kv_heads=num_kv_heads,
-                    head_dim=head_dim,
-                    q_len_per_req=q_len_per_req,
-                    kv_len=kv_len,
-                    dtype=torch.float8_e4m3fn,
-                ))
+                for num_heads in num_heads_spec:
+                    num_kv_heads = num_heads // group_size
+                    configs.append(dict(
+                        batch_size=batch_size,
+                        num_heads=num_heads,
+                        num_kv_heads=num_kv_heads,
+                        head_dim=head_dim,
+                        q_len_per_req=q_len_per_req,
+                        kv_len=kv_len,
+                        dtype=torch.float8_e4m3fn,
+                    ))
 
     for config in configs:
         yield config

@@ -18,6 +18,7 @@ except ImportError:
 
 sf_dtype = "float8_e8m0fnu"
 c_dtype = "bfloat16"
+CSV_PATH = "/tmp/fp4_test/cute_dsl_blockscaled_gemm.csv"
 
 # DeepGEMM case
 a_major = "k"
@@ -55,7 +56,8 @@ def bench_one(ab_dtype, num_groups, max_m, expected_m_per_group, n, k):
         test_func,
         "Sm100BlockScaledPersistentDenseGemmKernel",
         suppress_kineto_output=True,
-        num_tests=5,
+        num_tests=4,
+        trace_path=f"/tmp/fp4_test/trace/cute_dsl_blockscaled_gemm_{ab_dtype}_{num_groups}_{expected_m_per_group}_{n}_{k}.trace",
     )
 
     valid_m = data["masked_m"].sum().item()
@@ -76,7 +78,7 @@ def bench_one(ab_dtype, num_groups, max_m, expected_m_per_group, n, k):
         f"{t * 1e6:4.0f} us | {tflops:4.0f} TFLOPS | {gb_per_s:4.0f} GB/s"
     )
 
-    f = open("/tmp/fp4_test/cute_dsl_attn.csv", "a")
+    f = open(CSV_PATH, "a")
     f.write(
         f"{ab_dtype},{sf_dtype},{c_dtype},{num_groups},{expected_m_per_group},{valid_m},{n},{k},{t*1e6},{t_calibrated*1e6},{tflops},{gb_per_s}\n"
     )
@@ -97,42 +99,47 @@ def bench_one(ab_dtype, num_groups, max_m, expected_m_per_group, n, k):
 
 # ref: DeepGEMM
 def enumerate_m_grouped_masked():
-    max_m = 4096
+    max_m = 16
 
     cases = [
         # GB200 cases
-        (6, 1024),
-        (6, 512),
+        # (6, 1024),
+        # (6, 512),
         # DeepGEMM default cases
-        (1, 1024),
-        (2, 512),
-        (4, 256),
+        # (1, 1024),
+        # (2, 512),
+        # (4, 256),
     ]
     # more GB200 cases
-    num_experts_list = [128, 160, 256, 288]
+    num_experts_list = [160]
     for num_experts in num_experts_list:
         num_experts_per_token = 8
         ranks_options = []
         if num_experts % 3 == 0:
             ranks_options = [16, 32, 36, 72]
         else:
-            ranks_options = [16, 32, 64]
+            ranks_options = [8, 16, 32, 40]
         for num_ranks in ranks_options:
-            for num_tokens in [64, 128, 256, 512, 1024]:
+            for m_per_group in [4, 8, 12, 16, 24, 32]:
                 num_groups = num_experts // num_ranks
-                expected_m_per_group = num_tokens * num_experts_per_token // num_groups
-                cases.append((num_groups, expected_m_per_group))
+                cases.append((num_groups, m_per_group))
+            # for num_tokens in [1, 2, 4, 8, 16, 32]:
+            #     num_groups = num_experts // num_ranks
+            #     expected_m_per_group = num_tokens * num_experts_per_token // num_groups
+            #     # expected_m_per_group = num_tokens * num_experts_per_token
+            #     cases.append((num_groups, expected_m_per_group))
 
     for num_groups, expected_m_per_group in cases:
         for n, k in (
-            (4096, 7168),
-            (7168, 2048),
+            # (4096, 7168),
+            # (7168, 2048),
             (5120, 6144),
             (6144, 2560),
-            (8192, 1536),
-            (1536, 4096),
+            # (8192, 1536),
+            # (1536, 4096),
         ):
-            ab_dtypes = ["float4_e2m1fn", "float8_e4m3fn"]
+            # ab_dtypes = ["float4_e2m1fn", "float8_e4m3fn"]
+            ab_dtypes = ["float8_e4m3fn"]
             for ab_dtype in ab_dtypes:
                 yield dict(
                     ab_dtype=ab_dtype,
@@ -225,6 +232,10 @@ def create_masked_m(num_groups, expected_m_per_group, max_m):
 
 
 if __name__ == "__main__":
+    # Clear CSV and write header
+    with open(CSV_PATH, "w") as f:
+        f.write("ab_dtype,sf_dtype,c_dtype,num_groups,expected_m_per_group,valid_m,n,k,t_us_raw,t_us_calibrated,tflops,gb_per_s\n")
+
     for config in enumerate_m_grouped_masked():
         print(config)
         try:

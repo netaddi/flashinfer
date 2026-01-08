@@ -90,7 +90,7 @@ def bench_one(
         test_func,
         "fmha",
         suppress_kineto_output=True,
-        num_tests=8,
+        num_tests=10000,
     )
 
     # Calculate metrics
@@ -365,8 +365,9 @@ def enumerate_simple_configs():
     configs = []
 
     # test for prefill
-    test_batch_sizes = [1, 2, 4, 8, 12, 16]
-    test_prefill_lens = [256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536]
+    test_batch_sizes = [1]
+    # test_prefill_lens = [1024, 2048, 4096, 8192, 16384, 32768, 49152, 65536, 81920, 98304, 114688, 131072]
+    test_prefill_lens = [114688, 131072]
 
     for batch_size in test_batch_sizes:
         for q_len in test_prefill_lens:
@@ -381,23 +382,23 @@ def enumerate_simple_configs():
                 dtype=torch.float8_e4m3fn,
             ))
 
-    # test for sp decode
-    test_batch_sizes = list(range(16, 530, 16))
-    test_kv_lens = [2048, 4096, 8192, 16384, 32768, 65536]
-    test_q_lens = [1, 2, 3, 4, 5]
+    # # test for sp decode
+    # test_batch_sizes = list(range(16, 530, 16))
+    # test_kv_lens = [2048, 4096, 8192, 16384, 32768, 65536]
+    # test_q_lens = [1, 2, 3, 4, 5]
 
-    for batch_size in test_batch_sizes:
-        for kv_len in test_kv_lens:
-            for q_len in test_q_lens:
-                configs.append(dict(
-                    batch_size=batch_size,
-                    num_heads=num_heads,
-                    num_kv_heads=num_kv_heads,
-                    head_dim=head_dim,
-                    q_len=q_len,
-                    kv_len=kv_len,
-                    dtype=torch.float8_e4m3fn,
-                ))
+    # for batch_size in test_batch_sizes:
+    #     for kv_len in test_kv_lens:
+    #         for q_len in test_q_lens:
+    #             configs.append(dict(
+    #                 batch_size=batch_size,
+    #                 num_heads=num_heads,
+    #                 num_kv_heads=num_kv_heads,
+    #                 head_dim=head_dim,
+    #                 q_len=q_len,
+    #                 kv_len=kv_len,
+    #                 dtype=torch.float8_e4m3fn,
+    #             ))
 
     for config in configs:
         yield config
