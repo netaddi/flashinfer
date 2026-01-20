@@ -2,8 +2,22 @@
 set -e
 
 export FLASHINFER_LOCAL_VERSION=rtpllm-`date +%Y%m%d_%H%M%S`-`git rev-parse --short HEAD`
+export FLASHINFER_LOCAL_VERSION=rtpllm-20260119_141329-79215e88
 export FLASHINFER_CUDA_ARCH_LIST="10.0a"
+# Limit parallel compilation jobs to avoid OOM
+# CUDA compilation can use 8-16GB per process
+# Adjust based on available memory: MAX_JOBS = available_memory_GB / 10
 export MAX_JOBS=144
+
+# Debug flags for GDB debugging with line numbers and variable inspection
+# -g: Enable host-side debug symbols
+# -G: Enable CUDA device-side debug info (required for device variable inspection)
+# -lineinfo: Generate line number info in CUDA code
+# -O0: Disable optimization so variables are not optimized away
+# Note: -G significantly increases binary size and reduces performance
+# export FLASHINFER_EXTRA_CFLAGS="-g -O0"
+# export FLASHINFER_EXTRA_CUDAFLAGS="-g -G -lineinfo --compiler-options=-O0"
+# export FLASHINFER_EXTRA_LDFLAGS="-g"
 
 # Script to build all three FlashInfer wheel packages:
 # 1. flashinfer-python (core package)
@@ -37,12 +51,17 @@ log_error() {
 }
 
 # Parse command line arguments
+SKIP_PYTHON=false
 SKIP_JIT_CACHE=false
 SKIP_CUBIN=false
 CLEAN_BUILD=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --skip-python)
+            SKIP_PYTHON=true
+            shift
+            ;;
         --skip-jit-cache)
             SKIP_JIT_CACHE=true
             shift
@@ -59,6 +78,7 @@ while [[ $# -gt 0 ]]; do
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
+            echo "  --skip-python     Skip building flashinfer-python wheel"
             echo "  --skip-jit-cache  Skip building flashinfer-jit-cache wheel"
             echo "  --skip-cubin      Skip building flashinfer-cubin wheel"
             echo "  --clean           Clean previous builds before building"
@@ -115,25 +135,29 @@ pip install --quiet build wheel
 # ============================================
 # Step 1: Build flashinfer-python
 # ============================================
-echo ""
-echo "=========================================="
-echo "  Step 1/3: Building flashinfer-python"
-echo "=========================================="
+if [ "$SKIP_PYTHON" = true ]; then
+    log_warning "Skipping flashinfer-python build (--skip-python)"
+else
+    echo ""
+    echo "=========================================="
+    echo "  Step 1/3: Building flashinfer-python"
+    echo "=========================================="
 
-cd "${SCRIPT_DIR}"
-rm -rf dist build *.egg-info
+    cd "${SCRIPT_DIR}"
+    rm -rf dist build *.egg-info
 
-log_info "Building flashinfer-python wheel..."
-python -m build --wheel --no-isolation
+    log_info "Building flashinfer-python wheel..."
+    python -m build --wheel --no-isolation
 
-# Copy to output directory
-cp dist/*.whl "${BUILD_OUTPUT}/"
-PYTHON_WHL=$(ls dist/*.whl | head -1)
-log_success "Built: $(basename ${PYTHON_WHL})"
+    # Copy to output directory
+    cp dist/*.whl "${BUILD_OUTPUT}/"
+    PYTHON_WHL=$(ls dist/*.whl | head -1)
+    log_success "Built: $(basename ${PYTHON_WHL})"
 
-# Install flashinfer-python for subsequent builds
-log_info "Installing flashinfer-python for subsequent builds..."
-pip install --quiet --force-reinstall dist/*.whl
+    # Install flashinfer-python for subsequent builds
+    log_info "Installing flashinfer-python for subsequent builds..."
+    pip install --quiet --force-reinstall dist/*.whl
+fi
 
 # ============================================
 # Step 2: Build flashinfer-cubin
